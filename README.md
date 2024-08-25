@@ -11,8 +11,6 @@ $ time (for i in {1..500}; do ./comprs ./images/flower.jpg -iter 50000; done;)
   <img src="./images/flower-2000.jpg" alt="Flower" style="width: 50%;">
 </div>
 
-[toc]
-
 ## how it works
 
 A quad-tree is a data structure that recursively splits spacial data into four children, allowing for more efficient representation of the data. For image data, this looks like storing entire regions of the image as simply the average color of all pixels in the region. Each iteration, the algorithm finds leaf node with the most variance in color, and splits it.
