@@ -20,6 +20,16 @@ fn print_usage(program: &String) {
     );
 }
 
+fn print_help() {
+    println!("input-file        - path to input image, supports .{{jpg,png,...}}");
+    println!(
+        "-o output-file    - [optional] where to save output image, supports .{{jpg,png,...}}"
+    );
+    println!("-iter iterations  - number of times to split the quad-tree, more iterations means higher quality image");
+    println!("-outline hex-code - [optional] color to outline each sub-region of the quad-tree (e.g. -outline FF0000)");
+    println!("-gif save-delta   - [optional] save the algorithm process as a gif, save the image every `save-delta` iterations");
+}
+
 fn file_without_extension(path: &String) -> Result<(String, String), String> {
     let file_path = Path::new(path);
     if let Some(stem) = file_path.file_stem() {
@@ -72,6 +82,7 @@ fn real_main() -> i32 {
     while let Some(arg) = args.next() {
         if arg == "-h" {
             print_usage(&program_name);
+            print_help();
             return 0;
         } else if arg == "-o" {
             if let Some(of) = args.next() {
