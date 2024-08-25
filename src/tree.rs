@@ -1,8 +1,8 @@
 use std::collections::{BinaryHeap, VecDeque};
 
-use image::{Rgb, RgbImage, Rgba, RgbaImage};
+use image::{ImageBuffer, Pixel, Rgb, RgbImage, Rgba, RgbaImage};
 
-use crate::image::ImageData;
+use crate::image::{ImageData, RGB};
 
 struct NodeChildren {
     nw: usize,
@@ -161,12 +161,24 @@ impl Tree {
         }
     }
 
-    pub fn render_rgb(&self) -> RgbImage {
+    pub fn render<T>(
+        &self,
+        color_to_pixel: fn(RGB<u64>) -> T,
+        outline: Option<RGB<u8>>,
+    ) -> ImageBuffer<T, Vec<u8>>
+    where
+        T: Pixel<Subpixel = u8>,
+    {
         let (h, w) = self.dimensions;
-        let mut ret = RgbImage::new(w as u32, h as u32);
+        let mut ret = ImageBuffer::new(w as u32, h as u32);
+
+        let outline_pixel = match outline {
+            Some(c) => Some(color_to_pixel(c.into())),
+            None => None,
+        };
 
         let mut q = VecDeque::new();
-        q.push_back(0);
+        q.push_back(0); // root node
         while let Some(cur) = q.pop_front() {
             let node = &self.nodes[cur];
             if let Some(NodeChildren { nw, ne, sw, se }) = node.children {
@@ -178,50 +190,43 @@ impl Tree {
                 let (start_y, start_x) = node.top_left;
                 let (end_y, end_x) = node.bottom_right;
                 let color = self.image_data.average(node.top_left, node.bottom_right);
+                let pixel = color_to_pixel(color);
                 for x in start_x..=end_x {
                     for y in start_y..=end_y {
-                        ret.put_pixel(
-                            x as u32,
-                            y as u32,
-                            Rgb([color.r as u8, color.g as u8, color.b as u8]),
-                        );
+                        ret.put_pixel(x as u32, y as u32, pixel);
+                    }
+                }
+
+                if let Some(p) = outline_pixel {
+                    for y in [start_y, end_y].into_iter() {
+                        for x in start_x..=end_x {
+                            ret.put_pixel(x as u32, y as u32, p);
+                        }
+                    }
+
+                    for x in [start_x, end_x].into_iter() {
+                        for y in start_y..=end_y {
+                            ret.put_pixel(x as u32, y as u32, p);
+                        }
                     }
                 }
             }
         }
 
-        return ret;
+        ret
     }
 
-    pub fn render_rgba(&self) -> RgbaImage {
-        let (h, w) = self.dimensions;
-        let mut ret = RgbaImage::new(w as u32, h as u32);
+    pub fn render_rgb(&self, outline: Option<RGB<u8>>) -> RgbImage {
+        self.render(
+            |color| Rgb([color.r as u8, color.g as u8, color.b as u8]),
+            outline,
+        )
+    }
 
-        let mut q = VecDeque::new();
-        q.push_back(0);
-        while let Some(cur) = q.pop_front() {
-            let node = &self.nodes[cur];
-            if let Some(NodeChildren { nw, ne, sw, se }) = node.children {
-                q.push_back(nw);
-                q.push_back(ne);
-                q.push_back(sw);
-                q.push_back(se);
-            } else {
-                let (start_y, start_x) = node.top_left;
-                let (end_y, end_x) = node.bottom_right;
-                let color = self.image_data.average(node.top_left, node.bottom_right);
-                for x in start_x..=end_x {
-                    for y in start_y..=end_y {
-                        ret.put_pixel(
-                            x as u32,
-                            y as u32,
-                            Rgba([color.r as u8, color.g as u8, color.b as u8, MAX_ALPHA]),
-                        );
-                    }
-                }
-            }
-        }
-
-        return ret;
+    pub fn render_rgba(&self, outline: Option<RGB<u8>>) -> RgbaImage {
+        self.render(
+            |color| Rgba([color.r as u8, color.g as u8, color.b as u8, MAX_ALPHA]),
+            outline,
+        )
     }
 }

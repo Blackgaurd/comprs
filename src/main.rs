@@ -1,11 +1,12 @@
 use std::{
     env,
     fs::File,
+    io::BufWriter,
     path::{Path, PathBuf},
 };
 
 use ::image::{codecs::gif::GifEncoder, Frame};
-use image::ImageData;
+use image::{ImageData, RGB};
 use indicatif::ProgressBar;
 use tree::Tree;
 
@@ -15,7 +16,7 @@ mod tree;
 
 fn print_usage(program: &String) {
     println!(
-        "usage: {} <input-file> [-o output-file] -iter <iterations> [-gif save-delta]",
+        "usage: {} <input-file> [-o output-file] -iter <iterations> [-outline hex-code] [-gif save-delta]",
         program
     );
 }
@@ -45,10 +46,24 @@ fn file_without_extension(path: &String) -> Result<(String, String), String> {
     }
 }
 
+fn hex_to_rgb(hex: &String) -> Result<RGB<u8>, String> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return Err("hex code must be 6 characters long".into());
+    }
+
+    let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| "invalid hex code")?;
+    let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| "invalid hex code")?;
+    let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| "invalid hex code")?;
+
+    Ok(RGB::new(r, g, b))
+}
+
 fn real_main() -> i32 {
     let mut input_file = None;
     let mut output_file = None;
     let mut iterations: u32 = 0;
+    let mut outline = None;
     let mut gif_delta: Option<u32> = None;
 
     let mut args = env::args();
@@ -79,6 +94,20 @@ fn real_main() -> i32 {
                 }
             } else {
                 println!("number of iterations not specified");
+                print_usage(&program_name);
+                return 1;
+            }
+        } else if arg == "-outline" {
+            if let Some(h_str) = args.next() {
+                outline = match hex_to_rgb(&h_str) {
+                    Ok(rgb) => Some(rgb),
+                    Err(err) => {
+                        println!("{err}");
+                        return 1;
+                    }
+                }
+            } else {
+                println!("outline hex code not specified");
                 print_usage(&program_name);
                 return 1;
             }
@@ -114,7 +143,13 @@ fn real_main() -> i32 {
     let output_file = match output_file {
         Some(out_s) => out_s,
         None => match file_without_extension(&input_file) {
-            Ok((stem, extension)) => format!("{stem}-comprs.{extension}"),
+            Ok((stem, extension)) => {
+                if let Some(_) = gif_delta {
+                    format!("{stem}-comprs.gif")
+                } else {
+                    format!("{stem}-comprs.{extension}")
+                }
+            }
             Err(err) => {
                 println!("{err}");
                 return 1;
@@ -134,32 +169,33 @@ fn real_main() -> i32 {
     let progress_bar = ProgressBar::new(iterations.into());
     match gif_delta {
         Some(delta) => {
-            let Ok(writer) = File::create(output_file) else {
-                println!("unable to create new file");
-                return 1;
-            };
-            let mut encoder = GifEncoder::new(writer);
-
-            let Ok(()) = encoder.encode_frame(Frame::new(tree.render_rgba())) else {
-                println!("error in encoding gif");
-                return 1;
-            };
-            dbg!(delta);
+            let mut frames = Vec::new();
+            let buf = tree.render_rgba(outline);
+            frames.push(Frame::new(buf));
             for i in 1..=iterations {
                 if let Err(err) = tree.refine() {
                     println!("{err}");
                     return 1;
                 }
                 if i % delta == 0 {
-                    let buf = tree.render_rgba();
-                    let Ok(()) = encoder.encode_frame(Frame::new(buf)) else {
-                        println!("error in encoding gif");
-                        return 1;
-                    };
+                    let buf = tree.render_rgba(outline);
+                    frames.push(Frame::new(buf));
                 }
                 progress_bar.tick();
             }
             progress_bar.finish();
+
+            println!("encoding gif...");
+            let Ok(file) = File::create(output_file) else {
+                println!("unable to create new file");
+                return 1;
+            };
+            let writer = BufWriter::new(file);
+            let mut encoder = GifEncoder::new_with_speed(writer, 30);
+            if let Err(_) = encoder.encode_frames(frames) {
+                println!("error in encoding gif");
+                return 1;
+            }
         }
         None => {
             for _ in 1..=iterations {
@@ -170,7 +206,7 @@ fn real_main() -> i32 {
                 progress_bar.tick();
             }
             progress_bar.finish();
-            if let Err(err) = tree.render_rgb().save(output_file) {
+            if let Err(err) = tree.render_rgb(outline).save(output_file) {
                 println!("{err}");
                 return 1;
             }
