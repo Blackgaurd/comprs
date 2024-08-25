@@ -7,7 +7,6 @@ use std::{
 
 use ::image::{codecs::gif::GifEncoder, Frame};
 use image::{ImageData, RGB};
-use indicatif::ProgressBar;
 use tree::Tree;
 
 mod image;
@@ -166,7 +165,6 @@ fn real_main() -> i32 {
     };
 
     let mut tree = Tree::new(data);
-    let progress_bar = ProgressBar::new(iterations.into());
     match gif_delta {
         Some(delta) => {
             let mut frames = Vec::new();
@@ -181,9 +179,7 @@ fn real_main() -> i32 {
                     let buf = tree.render_rgba(outline);
                     frames.push(Frame::new(buf));
                 }
-                progress_bar.tick();
             }
-            progress_bar.finish();
 
             println!("encoding gif...");
             let Ok(file) = File::create(output_file) else {
@@ -203,9 +199,7 @@ fn real_main() -> i32 {
                     println!("{err}");
                     return 1;
                 }
-                progress_bar.tick();
             }
-            progress_bar.finish();
             if let Err(err) = tree.render_rgb(outline).save(output_file) {
                 println!("{err}");
                 return 1;
